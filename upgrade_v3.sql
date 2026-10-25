@@ -1,0 +1,1 @@
+ALTER TABLE users ADD must_change TINYINT DEFAULT 0;

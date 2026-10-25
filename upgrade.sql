@@ -1,0 +1,2 @@
+ALTER TABLE rooms MODIFY status ENUM('vacant','reserved','occupied','maintenance') DEFAULT 'vacant';
+CREATE TABLE IF NOT EXISTS bookings(id INT AUTO_INCREMENT PRIMARY KEY,room_id INT NOT NULL,tenant_id INT NOT NULL,rent DECIMAL(10,2),deposit DECIMAL(10,2),amount DECIMAL(10,2),slip VARCHAR(100),status ENUM('awaiting','pending','approved','rejected','cancelled') DEFAULT 'awaiting',note VARCHAR(255),created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,FOREIGN KEY(room_id) REFERENCES rooms(id),FOREIGN KEY(tenant_id) REFERENCES users(id));
