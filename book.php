@@ -11,7 +11,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){$a=$_POST['a']??'';
  if($b&&$b['status']=='awaiting'){
   if($a=='slip'){$n=upload($_FILES['slip']??[]);if($n){q("UPDATE bookings SET slip=?,status='pending' WHERE id=?",[$n,$b['id']]);q("UPDATE rooms SET status='occupied' WHERE id=?",[$b['room_id']]);flash('ส่งสลิปแล้ว คุณได้ห้องเรียบร้อย รอเจ้าของหอยืนยันยอด');header('Location: tenant.php');exit;}flash('ไฟล์ไม่ถูกต้อง (jpg/png/webp ไม่เกิน 3MB)');}
   if($a=='cancel'){q("UPDATE bookings SET status='cancelled' WHERE id=?",[$b['id']]);q("UPDATE rooms SET status='vacant',tenant_id=NULL WHERE id=?",[$b['room_id']]);flash('ยกเลิกการจองแล้ว');header('Location: index.php');exit;}}
- if(!$b||$b['status']!='awaiting')flash('การจองหมดเวลา (30 นาที) หรือถูกยกเลิกแล้ว กรุณาจองใหม่');
+ if(!$b||$b['status']!='awaiting')flash('การจองหมดเวลา ('.HOLD_MIN.' นาที) หรือถูกยกเลิกแล้ว กรุณาจองใหม่');
  back();}
 head('จองห้อง');$h='<input type="hidden" name="t" value="'.csrf().'">';
 if(isset($_GET['room'])){$r=q("SELECT * FROM rooms WHERE id=? AND status='vacant'",[$_GET['room']])->fetch();if(!$r){flash('ห้องนี้ไม่ว่าง');header('Location: index.php');exit;}?>
