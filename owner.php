@@ -8,7 +8,14 @@ if($_SERVER['REQUEST_METHOD']==='POST'){$a=$_POST['a']??'';
   else{$l=q("SELECT id FROM leases WHERE room_id=? AND status='active' ORDER BY id DESC LIMIT 1",[$rm['id']])->fetch();$v=[$rm['tenant_id'],$s,$en,(float)$_POST['rent'],(float)$_POST['deposit'],trim($_POST['note'])];
    if($l)q('UPDATE leases SET tenant_id=?,start_date=?,end_date=?,rent=?,deposit=?,note=? WHERE id=?',[...$v,$l['id']]);else q('INSERT INTO leases(tenant_id,start_date,end_date,rent,deposit,note,room_id)VALUES(?,?,?,?,?,?,?)',[...$v,$rm['id']]);
    logit('บันทึกสัญญาเช่าห้อง '.$rm['room_no']);flash('บันทึกสัญญาเช่าแล้ว');}}
- if($a=='lease_end'){q("UPDATE leases SET status='ended' WHERE id=?",[$_POST['id']]);flash('สิ้นสุดสัญญาแล้ว (ถ้าผู้เช่าย้ายออก ให้เลือก -- ว่าง -- ที่ช่องผู้เช่าในเมนูห้องพัก)');}
+ if($a=='lease_end'){q("UPDATE leases SET status='ended',ended_at=? WHERE id=?",[date('Y-m-d'),$_POST['id']]);flash('สิ้นสุดสัญญาแล้ว (ถ้าผู้เช่าย้ายออก ให้เลือก -- ว่าง -- ที่ช่องผู้เช่าในเมนูห้องพัก)');}
+ if($a=='dep'){$l=q("SELECT * FROM leases WHERE id=?",[$_POST['id']])->fetch();$d=$_POST['d']??'';
+  if(!$l)flash('ไม่พบสัญญา');
+  else{$i=stay_info($l);$rd=trim($_POST['rdate']??'');$today=date('Y-m-d');
+   if($d=='refund'&&!$i['ok'])flash('อยู่ไม่ครบ 3 เดือน จึงคืนมัดจำตามเงื่อนไขไม่ได้');
+   elseif($d=='refund'&&$rd!==''&&(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$rd)||$rd>$today||$rd<$l['start_date']))flash('วันที่คืนมัดจำไม่ถูกต้อง (ต้องไม่เกินวันนี้ และไม่ก่อนวันเริ่มสัญญา)');
+   elseif($d=='forfeit'&&($l['status']!='ended'||$i['ok']))flash('ริบมัดจำได้เฉพาะสัญญาที่สิ้นสุดแล้วและอยู่ไม่ครบ 3 เดือน');
+   elseif(in_array($d,['refund','forfeit','reset'])){$st=['refund'=>'refunded','forfeit'=>'forfeited','reset'=>'held'][$d];$at=$d=='reset'?null:($d=='refund'?($rd?:$today).' 00:00:00':date('Y-m-d H:i:s'));q('UPDATE leases SET deposit_status=?,deposit_settled_at=?,deposit_note=? WHERE id=?',[$st,$at,$d=='reset'?null:trim($_POST['note']??''),$l['id']]);logit("มัดจำสัญญา #{$l['id']}: $st");flash('บันทึกสถานะเงินมัดจำแล้ว');}}}
  if($a=='roomedit'){$rid=(int)$_POST['id'];$rm=q('SELECT * FROM rooms WHERE id=?',[$rid])->fetch();$no=trim($_POST['no']);$rent=(float)$_POST['rent'];
   if(!$rm)flash('ไม่พบห้องนี้');elseif($no==='')flash('กรุณากรอกเลขห้อง');elseif($rent<0)flash('ค่าเช่าต้องไม่ติดลบ');
   elseif(q('SELECT 1 FROM rooms WHERE room_no=? AND id<>?',[$no,$rid])->fetch())flash("เลขห้อง $no มีอยู่แล้ว");
@@ -24,7 +31,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){$a=$_POST['a']??'';
     foreach($fs as $f)if($f)@unlink(__DIR__.'/uploads/'.$f);logit("ลบห้อง {$rm['room_no']} (ประวัติชำระเงิน $pd รายการ)");flash('ลบห้อง '.$rm['room_no'].' แล้ว');
     }catch(PDOException $x){if(db()->inTransaction())db()->rollBack();flash('ลบไม่ได้: ห้องนี้มีข้อมูลเกี่ยวข้อง');}}}}
  if($a=='tenant'){$er=add_user($_POST['name'],$_POST['phone']);flash($er?:'เพิ่มผู้เช่าแล้ว: เข้าสู่ระบบด้วยเบอร์โทร รหัสผ่านเริ่มต้น = เลข 6 ตัวท้ายของเบอร์');}
- if($a=='assign'){q("UPDATE leases SET status='ended' WHERE room_id=? AND status='active' AND tenant_id<>?",[$_POST['id'],(int)$_POST['tid']]);q("UPDATE rooms SET tenant_id=?,status=IF(?='',IF(status='occupied','vacant',status),'occupied') WHERE id=?",[$_POST['tid']?:null,$_POST['tid'],$_POST['id']]);if(!$_POST['tid'])q("UPDATE rooms SET tenant_id=NULL,status='vacant' WHERE id=?",[$_POST['id']]);flash('บันทึกแล้ว');}
+ if($a=='assign'){q("UPDATE leases SET status='ended',ended_at=? WHERE room_id=? AND status='active' AND tenant_id<>?",[date('Y-m-d'),$_POST['id'],(int)$_POST['tid']]);q("UPDATE rooms SET tenant_id=?,status=IF(?='',IF(status='occupied','vacant',status),'occupied') WHERE id=?",[$_POST['tid']?:null,$_POST['tid'],$_POST['id']]);if(!$_POST['tid'])q("UPDATE rooms SET tenant_id=NULL,status='vacant' WHERE id=?",[$_POST['id']]);flash('บันทึกแล้ว');}
  if($a=='bill'){$m=$_POST['month'];$wr=(float)set('water_rate');$er=(float)set('elec_rate');$n=0;
   db()->beginTransaction();
   foreach(q("SELECT * FROM rooms WHERE tenant_id IS NOT NULL")->fetchAll() as $r){$w=$_POST['w'][$r['id']]??'';$el=$_POST['e'][$r['id']]??'';if($w===''||$el==='')continue;
@@ -44,7 +51,11 @@ if($_SERVER['REQUEST_METHOD']==='POST'){$a=$_POST['a']??'';
  if($a=='set'){foreach(['dorm_name','water_rate','elec_rate','common_fee','wifi_fee','late_fee','late_max','pay_name','bank_name','bank_no','promptpay']as$k){$v=$_POST[$k]??'';if(in_array($k,['late_fee','late_max']))$v=max(0,(float)$v);q('REPLACE INTO settings VALUES(?,?)',[$k,$v]);}flash('บันทึกตั้งค่าแล้ว');}
  }catch(PDOException $x){if(db()->inTransaction())db()->rollBack();flash('ผิดพลาด: ข้อมูลซ้ำหรือไม่ถูกต้อง');}
  back();}
-head('เจ้าของหอพัก');$T=fn($s)=>'<form method="post" style="display:inline" data-confirm="ยืนยัน?"><input type="hidden" name="t" value="'.csrf().'">';$h='<input type="hidden" name="t" value="'.csrf().'">';
+head('เจ้าของหอพัก');$T=fn($s)=>'<form method="post" style="display:inline" data-confirm="ยืนยัน?"><input type="hidden" name="t" value="'.csrf().'">';$h='<input type="hidden" name="t" value="'.csrf().'">';$DF=function($l)use($h){$st=$l['deposit_status']??'held';$i=stay_info($l);$end=($l['status']??'')=='ended';$d=date('Y-m-d');$f=function($cf,$dv,$ex,$cls,$lb)use($h,$l){return '<form method="post" class="row" data-confirm="'.$cf.'">'.$h.'<input type="hidden" name="a" value="dep"><input type="hidden" name="id" value="'.$l['id'].'"><input type="hidden" name="d" value="'.$dv.'">'.$ex.'<button class="'.$cls.'">'.$lb.'</button></form>';};$nt='<input name="note" placeholder="หมายเหตุ (ถ้ามี)">';
+if($st!='held')return $f('ย้อนกลับเป็นยังไม่ดำเนินการ?','reset','','gy','ย้อนกลับ');
+if($i['ok'])return $f('บันทึกว่าคืนเงินมัดจำแล้ว?','refund','<label>วันที่คืน <input type="date" name="rdate" value="'.$d.'" max="'.$d.'" required></label>'.$nt,'','คืนมัดจำ');
+if($end)return $f('ริบเงินมัดจำ (อยู่ไม่ครบ 3 เดือน)?','forfeit',$nt,'pk','ริบมัดจำ');
+return '';};
 $DEL=function($r,$cls='gy',$lbl='ลบ')use($h,$T){$pd=(int)q("SELECT (SELECT COUNT(*) FROM invoices WHERE room_id=? AND status='paid')+(SELECT COUNT(*) FROM bookings WHERE room_id=? AND status='approved')",[$r['id'],$r['id']])->fetchColumn();
  if($pd)return '<form method="post" style="display:inline" onsubmit="var v=prompt('.e(json_encode("ห้อง {$r['room_no']} มีประวัติการชำระเงินที่ยืนยันแล้ว $pd รายการ\nการลบจะลบประวัติเหล่านั้นถาวร (กู้คืนไม่ได้)\nพิมพ์เลขห้อง {$r['room_no']} เพื่อยืนยัน")).');if(v===null)return false;this.confirm.value=v;">'.$h.'<input type="hidden" name="a" value="roomdel"><input type="hidden" name="id" value="'.$r['id'].'"><input type="hidden" name="confirm" value=""><button class="'.$cls.'">ลบพร้อมประวัติ</button></form>';
  return $T(1).'<input type="hidden" name="a" value="roomdel"><input type="hidden" name="id" value="'.$r['id'].'"><button class="'.$cls.'">'.$lbl.'</button></form>';};
@@ -76,15 +87,17 @@ if($p=='roomedit'){$r=q('SELECT * FROM rooms WHERE id=?',[(int)($_GET['id']??0)]
 <?php }}
 if($p=='leases'){$ls=q("SELECT l.*,r.room_no FROM leases l JOIN rooms r ON r.id=l.room_id WHERE l.status='active' ORDER BY l.end_date")->fetchAll();$us=array_column(q('SELECT id,name FROM users')->fetchAll(),'name','id');
  $nol=q("SELECT r.id,r.room_no,u.name FROM rooms r JOIN users u ON u.id=r.tenant_id WHERE r.status='occupied' AND NOT EXISTS(SELECT 1 FROM leases l WHERE l.room_id=r.id AND l.status='active') ORDER BY r.room_no")->fetchAll();?>
-<div class="card sc"><h3>สัญญาเช่าที่ใช้งานอยู่ (เรียงตามวันหมดสัญญา)</h3><table><tr><th>ห้อง</th><th>ผู้เช่า</th><th>เริ่ม</th><th>หมดสัญญา</th><th>เหลือ</th><th></th></tr>
-<?php $mm='';foreach($ls as $l){$k=thmonth($l['end_date']);if($k!=$mm){$mm=$k;echo '<tr><td colspan="6" style="background:#eaf6fd"><b>หมดสัญญาเดือน '.e($k).'</b></td></tr>';}
-echo '<tr><td>'.e($l['room_no']).'</td><td>'.e($us[$l['tenant_id']]??'').'</td><td>'.thdate($l['start_date']).'</td><td>'.thdate($l['end_date']).'</td><td>'.leasebadge($l['end_date']).'</td><td><a class="btn" href="owner.php?p=lease&room='.$l['room_id'].'">ดู/แก้ไข</a></td></tr>';}
-if(!$ls)echo '<tr><td colspan="6">ยังไม่มีสัญญาเช่า</td></tr>';?></table></div>
+<div class="card sc"><h3>สัญญาเช่าที่ใช้งานอยู่ (เรียงตามวันหมดสัญญา)</h3><table><tr><th>ห้อง</th><th>ผู้เช่า</th><th>เริ่ม</th><th>หมดสัญญา</th><th>เหลือ</th><th>เงินมัดจำ</th><th></th></tr>
+<?php $mm='';foreach($ls as $l){$k=thmonth($l['end_date']);if($k!=$mm){$mm=$k;echo '<tr><td colspan="7" style="background:#eaf6fd"><b>หมดสัญญาเดือน '.e($k).'</b></td></tr>';}
+echo '<tr><td>'.e($l['room_no']).'</td><td>'.e($us[$l['tenant_id']]??'').'</td><td>'.thdate($l['start_date']).'</td><td>'.thdate($l['end_date']).'</td><td>'.leasebadge($l['end_date']).'</td><td>'.depbadge($l).$DF($l).'</td><td><a class="btn" href="owner.php?p=lease&room='.$l['room_id'].'">ดู/แก้ไข</a></td></tr>';}
+if(!$ls)echo '<tr><td colspan="7">ยังไม่มีสัญญาเช่า</td></tr>';?></table></div>
 <?php if($nol):?><div class="card"><h3>ห้องที่มีผู้เช่า แต่ยังไม่มีสัญญา</h3><?php foreach($nol as $x)echo '<div class="row"><b>ห้อง '.e($x['room_no']).'</b> '.e($x['name']).' <a class="btn pk" href="owner.php?p=lease&room='.$x['id'].'">กำหนดสัญญา</a></div>';?></div><?php endif;?>
+<?php $en=q("SELECT l.*,r.room_no FROM leases l JOIN rooms r ON r.id=l.room_id WHERE l.status='ended' ORDER BY l.id DESC LIMIT 50")->fetchAll();if($en):?><div class="card sc"><h3>สัญญาที่สิ้นสุดแล้ว / เงินมัดจำ</h3><table><tr><th>ห้อง</th><th>ผู้เช่า</th><th>อยู่รวม</th><th>มัดจำ</th><th>สถานะ</th><th></th></tr>
+<?php foreach($en as $l){$i=stay_info($l);echo '<tr><td>'.e($l['room_no']).'</td><td>'.e($us[$l['tenant_id']]??'').'</td><td>'.$i['m'].' เดือน<br><small>'.thdate($l['start_date']).' – '.thdate($l['ended_at']?:min($l['end_date'],date('Y-m-d'))).'</small></td><td>฿'.baht($l['deposit']).'</td><td>'.depbadge($l).($l['deposit_note']?'<br><small>'.e($l['deposit_note']).'</small>':'').'</td><td>'.$DF($l).'</td></tr>';}?></table></div><?php endif;?>
 <?php }
 if($p=='lease'){$rm=q("SELECT r.*,u.name,u.phone FROM rooms r LEFT JOIN users u ON u.id=r.tenant_id WHERE r.id=?",[(int)($_GET['room']??0)])->fetch();
  if(!$rm||!$rm['tenant_id']){echo '<div class="card">ห้องนี้ไม่มีผู้เช่า จึงกำหนดสัญญาไม่ได้ <a href="owner.php?p=leases">กลับ</a></div>';}
- else{$l=q("SELECT * FROM leases WHERE room_id=? AND status='active' ORDER BY id DESC LIMIT 1",[$rm['id']])->fetch();if($l)echo leasedoc($l+['room_no'=>$rm['room_no'],'type'=>$rm['type'],'name'=>$rm['name'],'phone'=>$rm['phone']]);?>
+ else{$l=q("SELECT * FROM leases WHERE room_id=? AND status='active' ORDER BY id DESC LIMIT 1",[$rm['id']])->fetch();if($l)echo leasedoc($l+['room_no'=>$rm['room_no'],'type'=>$rm['type'],'name'=>$rm['name'],'phone'=>$rm['phone']]);if($l)echo '<div class="card"><h3>เงินมัดจำ</h3>'.depbadge($l).' '.($DF($l)?:'<small>ยังไม่ครบ 3 เดือน</small>').'</div>';?>
 <div class="card noprint"><h3><?=$l?'แก้ไขสัญญา':'กำหนดสัญญาเช่า'?> ห้อง <?=e($rm['room_no'])?> · <?=e($rm['name'])?></h3><form method="post"><?=$h?><input type="hidden" name="a" value="lease_save"><input type="hidden" name="room" value="<?=$rm['id']?>">
 <p>วันเริ่มสัญญา<br><input type="date" id="ls" name="start" value="<?=e($l['start_date']??date('Y-m-d'))?>" required></p>
 <p>วันสิ้นสุดสัญญา<br><input type="date" id="le" name="end" value="<?=e($l['end_date']??'')?>" required> <button type="button" class="gy" onclick="addm(3)">+3 เดือน</button> <button type="button" class="gy" onclick="addm(6)">+6 เดือน</button> <button type="button" class="gy" onclick="addm(12)">+12 เดือน</button></p>
